@@ -1,0 +1,188 @@
+# Mini Juego Plataformero (HTML)
+
+Guarda esto como `index.html` y ábrelo en el navegador.
+
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Plataformero</title>
+<style>
+body {
+    margin: 0;
+    overflow: hidden;
+    background: linear-gradient(#87CEEB, #ffffff);
+    font-family: Arial, sans-serif;
+}
+
+canvas {
+    display: block;
+    margin: auto;
+    background: #7ec850;
+    border: 4px solid black;
+}
+</style>
+</head>
+<body>
+
+<canvas id="game" width="900" height="500"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const player = {
+    x: 100,
+    y: 300,
+    width: 40,
+    height: 40,
+    color: "red",
+    velX: 0,
+    velY: 0,
+    speed: 5,
+    jump: 14,
+    grounded: false
+};
+
+const gravity = 0.7;
+
+const keys = {};
+
+const platforms = [
+    {x:0, y:460, width:900, height:40},
+    {x:200, y:380, width:150, height:20},
+    {x:430, y:320, width:150, height:20},
+    {x:650, y:250, width:150, height:20}
+];
+
+const coins = [
+    {x:250, y:340, collected:false},
+    {x:480, y:280, collected:false},
+    {x:700, y:210, collected:false}
+];
+
+let score = 0;
+
+window.addEventListener("keydown", (e) => {
+    keys[e.key] = true;
+});
+
+window.addEventListener("keyup", (e) => {
+    keys[e.key] = false;
+});
+
+function collision(a, b) {
+    return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+    );
+}
+
+function update() {
+    // Movimiento
+    if(keys["a"] || keys["ArrowLeft"]) {
+        player.velX = -player.speed;
+    }
+    else if(keys["d"] || keys["ArrowRight"]) {
+        player.velX = player.speed;
+    }
+    else {
+        player.velX = 0;
+    }
+
+    if((keys["w"] || keys[" "] || keys["ArrowUp"]) && player.grounded) {
+        player.velY = -player.jump;
+        player.grounded = false;
+    }
+
+    player.velY += gravity;
+
+    player.x += player.velX;
+    player.y += player.velY;
+
+    player.grounded = false;
+
+    // Plataformas
+    for(let p of platforms) {
+        if(collision(player, p)) {
+            if(player.velY > 0) {
+                player.y = p.y - player.height;
+                player.velY = 0;
+                player.grounded = true;
+            }
+        }
+    }
+
+    // Monedas
+    for(let c of coins) {
+        if(!c.collected && collision(player, {x:c.x, y:c.y, width:20, height:20})) {
+            c.collected = true;
+            score++;
+        }
+    }
+
+    // Reinicio si cae
+    if(player.y > canvas.height) {
+        player.x = 100;
+        player.y = 300;
+        player.velY = 0;
+    }
+}
+
+function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // Plataformas
+    ctx.fillStyle = "#5c4033";
+    for(let p of platforms) {
+        ctx.fillRect(p.x, p.y, p.width, p.height);
+    }
+
+    // Monedas
+    for(let c of coins) {
+        if(!c.collected) {
+            ctx.fillStyle = "gold";
+            ctx.beginPath();
+            ctx.arc(c.x+10, c.y+10, 10, 0, Math.PI*2);
+            ctx.fill();
+        }
+    }
+
+    // Jugador
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+
+    // Texto
+    ctx.fillStyle = "black";
+    ctx.font = "24px Arial";
+    ctx.fillText("Monedas: " + score, 20, 40);
+
+    if(score === coins.length) {
+        ctx.font = "40px Arial";
+        ctx.fillText("¡GANASTE!", 330, 200);
+    }
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+
+</body>
+</html>
+```
+
+## Controles
+
+- A / Flecha izquierda = mover
+- D / Flecha derecha = mover
+- W / Espacio = saltar
+
