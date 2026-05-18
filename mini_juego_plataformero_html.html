@@ -1,188 +1,980 @@
-# Mini Juego Plataformero (HTML)
-
-Guarda esto como `index.html` y ábrelo en el navegador.
-
-```html
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mini Plataformero</title>
-<style>
-body {
-    margin: 0;
-    overflow: hidden;
-    background: linear-gradient(#87CEEB, #ffffff);
-    font-family: Arial, sans-serif;
-}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini Hollow Knight - Fase 4</title>
+    <style>
+        /* Estilos globales */
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
 
-canvas {
-    display: block;
-    margin: auto;
-    background: #7ec850;
-    border: 4px solid black;
-}
-</style>
+        canvas {
+            border: 2px solid #333;
+            background-color: #111;
+            display: block;
+        }
+
+        /* UI */
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 16px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        #healthBar {
+            width: 200px;
+            height: 20px;
+            background-color: #333;
+            border: 2px solid #555;
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        #playerHealth {
+            height: 100%;
+            background: linear-gradient(to right, #ff4444, #ff0000);
+            transition: width 0.3s;
+        }
+
+        #bossHealthContainer {
+            position: absolute;
+            top: 50px;
+            left: 20px;
+            width: 200px;
+        }
+
+        #bossHealth {
+            height: 15px;
+            background: linear-gradient(to right, #ff8800, #ff4400);
+            transition: width 0.3s;
+        }
+
+        #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 32px;
+            text-align: center;
+        }
+
+        #restartButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 20px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #restartButton:hover {
+            background-color: #555;
+        }
+    </style>
 </head>
 <body>
+    <!-- UI Elements -->
+    <div id="ui">
+        <div id="healthBar">
+            <div id="playerHealth" style="width: 100%;"></div>
+        </div>
+        <div id="bossHealthContainer" style="display: none;">
+            <div id="bossHealth" style="width: 100%; height: 15px; background: linear-gradient(to right, #ff8800, #ff4400);"></div>
+        </div>
+    </div>
 
-<canvas id="game" width="900" height="500"></canvas>
+    <div id="gameOverScreen">
+        <h1>Game Over</h1>
+        <button id="restartButton">Reiniciar</button>
+    </div>
 
-<script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+    <!-- Canvas -->
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
 
-const player = {
-    x: 100,
-    y: 300,
-    width: 40,
-    height: 40,
-    color: "red",
-    velX: 0,
-    velY: 0,
-    speed: 5,
-    jump: 14,
-    grounded: false
-};
+    <script>
+        // =============================================
+        // CONFIGURACIÓN INICIAL
+        // =============================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const ui = document.getElementById('ui');
+        const playerHealthBar = document.getElementById('playerHealth');
+        const bossHealthBar = document.getElementById('bossHealth');
+        const bossHealthContainer = document.getElementById('bossHealthContainer');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const restartButton = document.getElementById('restartButton');
 
-const gravity = 0.7;
+        // Tamaño del canvas
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 450;
 
-const keys = {};
+        // =============================================
+        // ESTADO DEL JUEGO
+        // =============================================
+        let gameState = {
+            player: {
+                x: 100,
+                y: 300,
+                width: 30,
+                height: 50,
+                speed: 5,
+                velX: 0,
+                velY: 0,
+                jumping: false,
+                health: 100,
+                maxHealth: 100,
+                attackCooldown: 0,
+                attackDuration: 0,
+                direction: 1, // 1 = derecha, -1 = izquierda
+                animationState: 'idle', // idle, run, jump, attack
+                animationFrame: 0,
+                animationSpeed: 0.2,
+                color: '#4a6baf',
+                glowColor: '#7fb3ff',
+                invulnerable: false,
+                invulnerabilityTimer: 0,
+            },
+            camera: {
+                x: 0,
+                y: 0,
+                shakeIntensity: 0,
+                shakeDuration: 0,
+            },
+            platforms: [
+                { x: 0, y: 400, width: 200, height: 20, color: '#2a2a3a' },
+                { x: 250, y: 350, width: 200, height: 20, color: '#2a2a3a' },
+                { x: 500, y: 300, width: 200, height: 20, color: '#2a2a3a' },
+                { x: 700, y: 250, width: 200, height: 20, color: '#2a2a3a' },
+                { x: 0, y: 450, width: 2000, height: 50, color: '#1a1a2a' }, // Suelo
+            ],
+            enemies: [],
+            boss: null,
+            particles: [],
+            keys: {
+                left: false,
+                right: false,
+                up: false,
+                space: false,
+            },
+            gameOver: false,
+            bossActive: false,
+        };
 
-const platforms = [
-    {x:0, y:460, width:900, height:40},
-    {x:200, y:380, width:150, height:20},
-    {x:430, y:320, width:150, height:20},
-    {x:650, y:250, width:150, height:20}
-];
+        // =============================================
+        // INICIALIZACIÓN
+        // =============================================
+        function init() {
+            // Inicializar jugador
+            gameState.player.x = 100;
+            gameState.player.y = 300;
+            gameState.player.health = gameState.player.maxHealth;
+            playerHealthBar.style.width = `${gameState.player.health}%`;
 
-const coins = [
-    {x:250, y:340, collected:false},
-    {x:480, y:280, collected:false},
-    {x:700, y:210, collected:false}
-];
+            // Inicializar cámara
+            gameState.camera.x = 0;
+            gameState.camera.y = 0;
 
-let score = 0;
+            // Inicializar enemigos
+            gameState.enemies = [
+                { x: 300, y: 320, width: 30, height: 40, health: 30, color: '#ff4444', velX: 2, direction: 1 },
+                { x: 600, y: 270, width: 30, height: 40, health: 30, color: '#ff4444', velX: 2, direction: 1 },
+            ];
 
-window.addEventListener("keydown", (e) => {
-    keys[e.key] = true;
-});
+            // Inicializar jefe (no activo al inicio)
+            gameState.boss = {
+                x: 1200,
+                y: 200,
+                width: 80,
+                height: 100,
+                health: 200,
+                maxHealth: 200,
+                color: '#ff6600',
+                glowColor: '#ffaa00',
+                velX: 0,
+                velY: 0,
+                direction: 1,
+                attackCooldown: 0,
+                attackType: 0, // 0: movimiento, 1: ataque cuerpo a cuerpo, 2: proyectil
+                active: false,
+                animationFrame: 0,
+                animationSpeed: 0.1,
+            };
 
-window.addEventListener("keyup", (e) => {
-    keys[e.key] = false;
-});
+            // Inicializar partículas
+            gameState.particles = [];
 
-function collision(a, b) {
-    return (
-        a.x < b.x + b.width &&
-        a.x + a.width > b.x &&
-        a.y < b.y + b.height &&
-        a.y + a.height > b.y
-    );
-}
+            // Inicializar estado del juego
+            gameState.gameOver = false;
+            gameState.bossActive = false;
 
-function update() {
-    // Movimiento
-    if(keys["a"] || keys["ArrowLeft"]) {
-        player.velX = -player.speed;
-    }
-    else if(keys["d"] || keys["ArrowRight"]) {
-        player.velX = player.speed;
-    }
-    else {
-        player.velX = 0;
-    }
+            // Ocultar UI del jefe al inicio
+            bossHealthContainer.style.display = 'none';
 
-    if((keys["w"] || keys[" "] || keys["ArrowUp"]) && player.grounded) {
-        player.velY = -player.jump;
-        player.grounded = false;
-    }
+            // Ocultar pantalla de Game Over
+            gameOverScreen.style.display = 'none';
 
-    player.velY += gravity;
+            // Event listeners
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
+            restartButton.addEventListener('click', resetGame);
 
-    player.x += player.velX;
-    player.y += player.velY;
+            // Iniciar el juego
+            requestAnimationFrame(gameLoop);
+        }
 
-    player.grounded = false;
-
-    // Plataformas
-    for(let p of platforms) {
-        if(collision(player, p)) {
-            if(player.velY > 0) {
-                player.y = p.y - player.height;
-                player.velY = 0;
-                player.grounded = true;
+        // =============================================
+        // MANEJO DE ENTRADA (INPUT)
+        // =============================================
+        function handleKeyDown(e) {
+            switch (e.key) {
+                case 'ArrowLeft':
+                    gameState.keys.left = true;
+                    gameState.player.direction = -1;
+                    break;
+                case 'ArrowRight':
+                    gameState.keys.right = true;
+                    gameState.player.direction = 1;
+                    break;
+                case 'ArrowUp':
+                    gameState.keys.up = true;
+                    break;
+                case ' ':
+                    gameState.keys.space = true;
+                    break;
             }
         }
-    }
 
-    // Monedas
-    for(let c of coins) {
-        if(!c.collected && collision(player, {x:c.x, y:c.y, width:20, height:20})) {
-            c.collected = true;
-            score++;
+        function handleKeyUp(e) {
+            switch (e.key) {
+                case 'ArrowLeft':
+                    gameState.keys.left = false;
+                    break;
+                case 'ArrowRight':
+                    gameState.keys.right = false;
+                    break;
+                case 'ArrowUp':
+                    gameState.keys.up = false;
+                    break;
+                case ' ':
+                    gameState.keys.space = false;
+                    break;
+            }
         }
-    }
 
-    // Reinicio si cae
-    if(player.y > canvas.height) {
-        player.x = 100;
-        player.y = 300;
-        player.velY = 0;
-    }
-}
+        // =============================================
+        // ACTUALIZACIÓN DEL JUEGO
+        // =============================================
+        function update() {
+            if (gameState.gameOver) return;
 
-function draw() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+            // Actualizar jugador
+            updatePlayer();
 
-    // Plataformas
-    ctx.fillStyle = "#5c4033";
-    for(let p of platforms) {
-        ctx.fillRect(p.x, p.y, p.width, p.height);
-    }
+            // Actualizar cámara
+            updateCamera();
 
-    // Monedas
-    for(let c of coins) {
-        if(!c.collected) {
-            ctx.fillStyle = "gold";
+            // Actualizar enemigos
+            updateEnemies();
+
+            // Actualizar jefe (si está activo)
+            if (gameState.bossActive) {
+                updateBoss();
+            }
+
+            // Actualizar partículas
+            updateParticles();
+
+            // Verificar colisiones
+            checkCollisions();
+
+            // Verificar activación del jefe
+            checkBossActivation();
+        }
+
+        function updatePlayer() {
+            const player = gameState.player;
+
+            // Movimiento horizontal
+            player.velX = 0;
+            if (gameState.keys.left) {
+                player.velX = -player.speed;
+                player.animationState = 'run';
+            }
+            if (gameState.keys.right) {
+                player.velX = player.speed;
+                player.animationState = 'run';
+            }
+
+            // Salto
+            if (gameState.keys.up && !player.jumping) {
+                player.velY = -12;
+                player.jumping = true;
+                player.animationState = 'jump';
+                // Partículas de salto
+                createParticles(player.x + player.width / 2, player.y + player.height, 10, '#7fb3ff', 2, -2, -1);
+            }
+
+            // Gravedad
+            player.velY += 0.8;
+
+            // Aplicar velocidad
+            player.x += player.velX;
+            player.y += player.velY;
+
+            // Limitar velocidad vertical
+            if (player.velY > 10) player.velY = 10;
+
+            // Ataque
+            if (gameState.keys.space && player.attackCooldown <= 0) {
+                player.attackCooldown = 10;
+                player.attackDuration = 5;
+                player.animationState = 'attack';
+                // Crear hitbox de ataque
+                const hitbox = {
+                    x: player.x + (player.direction > 0 ? player.width : -20),
+                    y: player.y + 10,
+                    width: 30,
+                    height: 30,
+                    damage: 20,
+                    direction: player.direction,
+                };
+                gameState.hitboxes = [hitbox];
+                // Partículas de ataque
+                createParticles(
+                    hitbox.x + hitbox.width / 2,
+                    hitbox.y + hitbox.height / 2,
+                    5,
+                    '#ffffff',
+                    3,
+                    player.direction * 2,
+                    -1
+                );
+            }
+
+            // Actualizar cooldowns
+            if (player.attackCooldown > 0) player.attackCooldown--;
+            if (player.attackDuration > 0) player.attackDuration--;
+
+            // Actualizar invulnerabilidad
+            if (player.invulnerable) {
+                player.invulnerabilityTimer--;
+                if (player.invulnerabilityTimer <= 0) {
+                    player.invulnerable = false;
+                }
+            }
+
+            // Actualizar animación
+            player.animationFrame += player.animationSpeed;
+            if (player.animationFrame >= 4) player.animationFrame = 0;
+
+            // Si no se está moviendo, volver a idle
+            if (!gameState.keys.left && !gameState.keys.right && !player.jumping && player.animationState !== 'attack') {
+                player.animationState = 'idle';
+            }
+        }
+
+        function updateCamera() {
+            const camera = gameState.camera;
+            const player = gameState.player;
+
+            // Seguimiento suave de la cámara
+            const targetX = player.x - CANVAS_WIDTH / 2 + player.width / 2;
+            const targetY = player.y - CANVAS_HEIGHT / 2 + player.height / 2;
+
+            // Limitar la cámara para que no muestre áreas vacías
+            const minX = 0;
+            const maxX = 2000 - CANVAS_WIDTH; // Tamaño del mundo
+            const minY = 0;
+            const maxY = 500 - CANVAS_HEIGHT;
+
+            camera.x += (targetX - camera.x) * 0.05;
+            camera.y += (targetY - camera.y) * 0.05;
+
+            // Aplicar límites
+            camera.x = Math.max(minX, Math.min(maxX, camera.x));
+            camera.y = Math.max(minY, Math.min(maxY, camera.y));
+
+            // Screen shake
+            if (camera.shakeDuration > 0) {
+                camera.shakeIntensity = Math.max(0, camera.shakeIntensity - 0.5);
+                camera.shakeDuration--;
+            } else {
+                camera.shakeIntensity = 0;
+            }
+        }
+
+        function updateEnemies() {
+            gameState.enemies.forEach((enemy, index) => {
+                // Movimiento
+                enemy.x += enemy.velX * enemy.direction;
+
+                // Cambiar dirección si choca con una plataforma o límite
+                const nextX = enemy.x + enemy.velX * enemy.direction;
+                if (nextX < 0 || nextX + enemy.width > 2000 || checkPlatformCollision(enemy, nextX, enemy.y)) {
+                    enemy.direction *= -1;
+                }
+
+                // Gravedad
+                enemy.y += 0.8;
+                if (checkPlatformCollision(enemy, enemy.x, enemy.y + 0.8)) {
+                    enemy.y = findPlatformY(enemy.x, enemy.y + 0.8) - enemy.height;
+                }
+            });
+
+            // Eliminar enemigos muertos
+            gameState.enemies = gameState.enemies.filter(enemy => enemy.health > 0);
+        }
+
+        function updateBoss() {
+            const boss = gameState.boss;
+            if (!boss.active) return;
+
+            // Activar UI del jefe
+            bossHealthContainer.style.display = 'block';
+            bossHealthBar.style.width = `${(boss.health / boss.maxHealth) * 100}%`;
+
+            // Lógica del jefe
+            boss.attackCooldown--;
+            if (boss.attackCooldown <= 0) {
+                // Elegir ataque aleatorio
+                boss.attackType = Math.floor(Math.random() * 3);
+                boss.attackCooldown = 60 + Math.random() * 60; // 1-2 segundos
+
+                switch (boss.attackType) {
+                    case 0: // Movimiento
+                        boss.velX = (Math.random() * 4 - 2) * 2;
+                        boss.velY = Math.random() * -3;
+                        break;
+                    case 1: // Ataque cuerpo a cuerpo
+                        boss.velX = gameState.player.x < boss.x ? -4 : 4;
+                        boss.velY = 0;
+                        break;
+                    case 2: // Proyectil
+                        createBossProjectile();
+                        break;
+                }
+            }
+
+            // Aplicar velocidad
+            boss.x += boss.velX;
+            boss.y += boss.velY;
+
+            // Gravedad
+            boss.velY += 0.2;
+            if (boss.velY > 5) boss.velY = 5;
+
+            // Limitar movimiento del jefe
+            if (boss.x < 1000) boss.x = 1000;
+            if (boss.x + boss.width > 1400) boss.x = 1400 - boss.width;
+            if (boss.y < 100) boss.y = 100;
+            if (boss.y + boss.height > 300) boss.y = 300 - boss.height;
+
+            // Actualizar animación
+            boss.animationFrame += boss.animationSpeed;
+            if (boss.animationFrame >= 4) boss.animationFrame = 0;
+        }
+
+        function createBossProjectile() {
+            const boss = gameState.boss;
+            const direction = gameState.player.x < boss.x ? -1 : 1;
+            gameState.enemies.push({
+                x: boss.x + boss.width / 2,
+                y: boss.y + boss.height / 2,
+                width: 15,
+                height: 15,
+                health: 1,
+                color: '#ff0000',
+                velX: 5 * direction,
+                velY: 0,
+                isProjectile: true,
+                direction: direction,
+            });
+        }
+
+        function updateParticles() {
+            gameState.particles.forEach((particle, index) => {
+                particle.x += particle.velX;
+                particle.y += particle.velY;
+                particle.life--;
+
+                // Aplicar gravedad
+                particle.velY += 0.1;
+
+                // Eliminar partículas muertas
+                if (particle.life <= 0) {
+                    gameState.particles.splice(index, 1);
+                }
+            });
+        }
+
+        function checkCollisions() {
+            const player = gameState.player;
+
+            // Colisión con plataformas
+            if (checkPlatformCollision(player, player.x, player.y + player.height)) {
+                player.jumping = false;
+                player.velY = 0;
+                player.y = findPlatformY(player.x, player.y + player.height) - player.height;
+            } else {
+                player.jumping = true;
+            }
+
+            // Colisión con enemigos
+            gameState.enemies.forEach((enemy, enemyIndex) => {
+                if (checkCollision(player, enemy) && !player.invulnerable && !enemy.isProjectile) {
+                    player.health -= 10;
+                    playerHealthBar.style.width = `${(player.health / player.maxHealth) * 100}%`;
+                    player.invulnerable = true;
+                    player.invulnerabilityTimer = 30;
+                    // Screen shake
+                    gameState.camera.shakeIntensity = 10;
+                    gameState.camera.shakeDuration = 15;
+                    // Partículas de daño
+                    createParticles(player.x + player.width / 2, player.y + player.height / 2, 15, '#ff0000', 3, -2, -2);
+                    // Flash rojo
+                    document.body.style.backgroundColor = '#ff000022';
+                    setTimeout(() => {
+                        document.body.style.backgroundColor = '#0a0a0a';
+                    }, 100);
+                }
+
+                // Colisión con hitbox de ataque
+                if (gameState.hitboxes) {
+                    gameState.hitboxes.forEach((hitbox, hitboxIndex) => {
+                        if (checkCollision(hitbox, enemy)) {
+                            enemy.health -= hitbox.damage;
+                            // Partículas de golpe
+                            createParticles(
+                                enemy.x + enemy.width / 2,
+                                enemy.y + enemy.height / 2,
+                                10,
+                                '#ffffff',
+                                2,
+                                hitbox.direction * 2,
+                                -1
+                            );
+                            // Knockback
+                            enemy.x += hitbox.direction * 5;
+                            enemy.velX = hitbox.direction * 2;
+                            // Eliminar hitbox después de golpear
+                            gameState.hitboxes.splice(hitboxIndex, 1);
+                        }
+                    });
+                }
+
+                // Colisión con proyectiles del jefe
+                if (enemy.isProjectile && checkCollision(player, enemy) && !player.invulnerable) {
+                    player.health -= 15;
+                    playerHealthBar.style.width = `${(player.health / player.maxHealth) * 100}%`;
+                    player.invulnerable = true;
+                    player.invulnerabilityTimer = 30;
+                    // Screen shake
+                    gameState.camera.shakeIntensity = 5;
+                    gameState.camera.shakeDuration = 10;
+                    // Partículas de daño
+                    createParticles(player.x + player.width / 2, player.y + player.height / 2, 10, '#ff0000', 2, -2, -2);
+                    // Eliminar proyectil
+                    gameState.enemies.splice(enemyIndex, 1);
+                }
+            });
+
+            // Colisión con el jefe
+            if (gameState.bossActive && gameState.boss.health > 0) {
+                const boss = gameState.boss;
+                if (checkCollision(player, boss) && !player.invulnerable) {
+                    player.health -= 20;
+                    playerHealthBar.style.width = `${(player.health / player.maxHealth) * 100}%`;
+                    player.invulnerable = true;
+                    player.invulnerabilityTimer = 30;
+                    // Screen shake
+                    gameState.camera.shakeIntensity = 15;
+                    gameState.camera.shakeDuration = 20;
+                    // Partículas de daño
+                    createParticles(player.x + player.width / 2, player.y + player.height / 2, 20, '#ff0000', 3, -3, -3);
+                }
+
+                // Colisión con hitbox de ataque al jefe
+                if (gameState.hitboxes) {
+                    gameState.hitboxes.forEach((hitbox, hitboxIndex) => {
+                        if (checkCollision(hitbox, boss)) {
+                            boss.health -= hitbox.damage;
+                            bossHealthBar.style.width = `${(boss.health / boss.maxHealth) * 100}%`;
+                            // Partículas de golpe
+                            createParticles(
+                                boss.x + boss.width / 2,
+                                boss.y + boss.height / 2,
+                                15,
+                                '#ffffff',
+                                3,
+                                hitbox.direction * 3,
+                                -2
+                            );
+                            // Knockback
+                            boss.x += hitbox.direction * 10;
+                            boss.velX = hitbox.direction * 2;
+                            // Eliminar hitbox después de golpear
+                            gameState.hitboxes.splice(hitboxIndex, 1);
+                            // Screen shake
+                            gameState.camera.shakeIntensity = 5;
+                            gameState.camera.shakeDuration = 10;
+                        }
+                    });
+                }
+            }
+
+            // Verificar muerte del jugador
+            if (player.health <= 0) {
+                gameState.gameOver = true;
+                gameOverScreen.style.display = 'flex';
+                // Partículas de muerte
+                createParticles(player.x + player.width / 2, player.y + player.height / 2, 30, '#ff0000', 4, -3, -3);
+            }
+
+            // Verificar muerte del jefe
+            if (gameState.bossActive && gameState.boss.health <= 0) {
+                gameState.bossActive = false;
+                bossHealthContainer.style.display = 'none';
+                // Partículas de victoria
+                createParticles(boss.x + boss.width / 2, boss.y + boss.height / 2, 50, '#00ff00', 5, -4, -4);
+            }
+        }
+
+        function checkBossActivation() {
+            const player = gameState.player;
+            const boss = gameState.boss;
+
+            // Activar jefe si el jugador llega a la zona
+            if (player.x > 1000 && !gameState.bossActive) {
+                gameState.bossActive = true;
+                boss.active = true;
+                boss.health = boss.maxHealth;
+                bossHealthBar.style.width = '100%';
+                bossHealthContainer.style.display = 'block';
+                // Mensaje de activación (opcional)
+                console.log("¡El jefe ha aparecido!");
+            }
+        }
+
+        // =============================================
+        // FÍSICA Y COLISIONES
+        // =============================================
+        function checkPlatformCollision(entity, x, y) {
+            for (const platform of gameState.platforms) {
+                if (
+                    x < platform.x + platform.width &&
+                    x + entity.width > platform.x &&
+                    y < platform.y + platform.height &&
+                    y + entity.height > platform.y
+                ) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function findPlatformY(x, y) {
+            for (const platform of gameState.platforms) {
+                if (
+                    x < platform.x + platform.width &&
+                    x + 1 > platform.x &&
+                    y < platform.y + platform.height &&
+                    y + 1 > platform.y
+                ) {
+                    return platform.y;
+                }
+            }
+            return y;
+        }
+
+        function checkCollision(a, b) {
+            return (
+                a.x < b.x + b.width &&
+                a.x + a.width > b.x &&
+                a.y < b.y + b.height &&
+                a.y + a.height > b.y
+            );
+        }
+
+        // =============================================
+        // PARTÍCULAS
+        // =============================================
+        function createParticles(x, y, count, color, size, velX, velY) {
+            for (let i = 0; i < count; i++) {
+                gameState.particles.push({
+                    x: x,
+                    y: y,
+                    size: Math.random() * size + 1,
+                    color: color,
+                    velX: (Math.random() * 2 - 1) * velX,
+                    velY: (Math.random() * 2 - 1) * velY,
+                    life: 10 + Math.random() * 20,
+                });
+            }
+        }
+
+        // =============================================
+        // RENDERIZADO
+        // =============================================
+        function render() {
+            // Limpiar canvas
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Aplicar camera shake
+            const shakeX = gameState.camera.shakeIntensity * (Math.random() * 2 - 1);
+            const shakeY = gameState.camera.shakeIntensity * (Math.random() * 2 - 1);
+
+            // Guardar contexto y aplicar transformación de cámara
+            ctx.save();
+            ctx.translate(-gameState.camera.x + shakeX, -gameState.camera.y + shakeY);
+
+            // Dibujar fondo
+            drawBackground();
+
+            // Dibujar plataformas
+            drawPlatforms();
+
+            // Dibujar partículas
+            drawParticles();
+
+            // Dibujar enemigos
+            drawEnemies();
+
+            // Dibujar jefe (si está activo)
+            if (gameState.bossActive) {
+                drawBoss();
+            }
+
+            // Dibujar jugador
+            drawPlayer();
+
+            // Dibujar hitboxes (para debug)
+            if (gameState.hitboxes) {
+                gameState.hitboxes.forEach(hitbox => {
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                    ctx.fillRect(hitbox.x, hitbox.y, hitbox.width, hitbox.height);
+                });
+            }
+
+            // Restaurar contexto
+            ctx.restore();
+        }
+
+        function drawBackground() {
+            // Fondo degradado oscuro
+            const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+            gradient.addColorStop(0, '#0a0a1a');
+            gradient.addColorStop(1, '#1a1a2a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 2000, 500);
+
+            // Estrellas o detalles de fondo
+            for (let i = 0; i < 50; i++) {
+                const x = Math.random() * 2000;
+                const y = Math.random() * 500;
+                const size = Math.random() * 2;
+                ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.5 + 0.2})`;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawPlatforms() {
+            gameState.platforms.forEach(platform => {
+                ctx.fillStyle = platform.color;
+                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+
+                // Borde superior más claro
+                ctx.fillStyle = '#3a3a4a';
+                ctx.fillRect(platform.x, platform.y, platform.width, 3);
+
+                // Sombra
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.fillRect(platform.x, platform.y + platform.height - 3, platform.width, 3);
+            });
+        }
+
+        function drawParticles() {
+            gameState.particles.forEach(particle => {
+                ctx.fillStyle = particle.color;
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function drawEnemies() {
+            gameState.enemies.forEach(enemy => {
+                // Cuerpo
+                ctx.fillStyle = enemy.color;
+                ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+
+                // Ojos (para dar personalidad)
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(enemy.x + 5, enemy.y + 10, 5, 5);
+                ctx.fillRect(enemy.x + enemy.width - 10, enemy.y + 10, 5, 5);
+
+                // Glow (para enemigos especiales)
+                if (enemy.isProjectile) {
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+                    ctx.beginPath();
+                    ctx.arc(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.width / 2 + 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+        }
+
+        function drawBoss() {
+            const boss = gameState.boss;
+            if (!boss.active) return;
+
+            // Glow
+            ctx.fillStyle = boss.glowColor;
             ctx.beginPath();
-            ctx.arc(c.x+10, c.y+10, 10, 0, Math.PI*2);
+            ctx.arc(boss.x + boss.width / 2, boss.y + boss.height / 2, boss.width / 2 + 10, 0, Math.PI * 2);
             ctx.fill();
+
+            // Cuerpo
+            ctx.fillStyle = boss.color;
+            ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+
+            // Detalles (ojos, boca, etc.)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(boss.x + 20, boss.y + 20, 10, 10);
+            ctx.fillRect(boss.x + boss.width - 30, boss.y + 20, 10, 10);
+
+            // Animación de ataque (parpadeo)
+            if (boss.attackType === 1 && boss.attackCooldown < 30) {
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(boss.x + boss.width / 2 - 15, boss.y + boss.height / 2 - 15, 30, 30);
+            }
         }
-    }
 
-    // Jugador
-    ctx.fillStyle = player.color;
-    ctx.fillRect(player.x, player.y, player.width, player.height);
+        function drawPlayer() {
+            const player = gameState.player;
+            const frame = Math.floor(player.animationFrame);
 
-    // Texto
-    ctx.fillStyle = "black";
-    ctx.font = "24px Arial";
-    ctx.fillText("Monedas: " + score, 20, 40);
+            // Glow
+            ctx.fillStyle = player.glowColor;
+            ctx.beginPath();
+            ctx.arc(
+                player.x + player.width / 2,
+                player.y + player.height / 2,
+                player.width / 2 + 5,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
 
-    if(score === coins.length) {
-        ctx.font = "40px Arial";
-        ctx.fillText("¡GANASTE!", 330, 200);
-    }
-}
+            // Cuerpo
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
 
-function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
-}
+            // Animaciones
+            switch (player.animationState) {
+                case 'idle':
+                    // Espada en reposo
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(
+                        player.x + (player.direction > 0 ? player.width - 5 : -5),
+                        player.y + 15,
+                        10,
+                        20
+                    );
+                    break;
+                case 'run':
+                    // Espada moviéndose
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(
+                        player.x + (player.direction > 0 ? player.width + 5 : -15) + (frame % 2 === 0 ? 2 : -2),
+                        player.y + 15 + (frame % 2 === 0 ? 1 : -1),
+                        10,
+                        20
+                    );
+                    break;
+                case 'jump':
+                    // Espada hacia arriba
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(
+                        player.x + player.width / 2 - 5,
+                        player.y - 10,
+                        10,
+                        20
+                    );
+                    break;
+                case 'attack':
+                    // Espada extendida
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(
+                        player.x + (player.direction > 0 ? player.width : -20),
+                        player.y + 10,
+                        30,
+                        5
+                    );
+                    break;
+            }
 
-gameLoop();
-</script>
+            // Ojos
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(player.x + 10, player.y + 10, 5, 5);
+            ctx.fillRect(player.x + player.width - 15, player.y + 10, 5, 5);
 
+            // Invulnerabilidad (parpadeo)
+            if (player.invulnerable && Math.floor(Date.now() / 200) % 2 === 0) {
+                ctx.globalAlpha = 0.5;
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(player.x, player.y, player.width, player.height);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // =============================================
+        // REINICIO DEL JUEGO
+        // =============================================
+        function resetGame() {
+            gameState.gameOver = false;
+            gameOverScreen.style.display = 'none';
+            document.body.style.backgroundColor = '#0a0a0a';
+            init();
+        }
+
+        // =============================================
+        // GAME LOOP
+        // =============================================
+        function gameLoop() {
+            update();
+            render();
+            if (!gameState.gameOver) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // =============================================
+        // INICIAR EL JUEGO
+        // =============================================
+        init();
+    </script>
 </body>
 </html>
-```
-
-## Controles
-
-- A / Flecha izquierda = mover
-- D / Flecha derecha = mover
-- W / Espacio = saltar
-
